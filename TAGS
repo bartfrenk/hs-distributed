@@ -1,0 +1,254 @@
+
+./app/Test.hs,52
+module Main Main0,1
+main main4,5
+main main5,6
+
+./app/Main.hs,52
+module Main Main0,1
+main main4,5
+main main5,6
+
+./src/GFS/ChunkServer.hs,372
+module GFS.ChunkServer GFS.ChunkServer1,2
+data Lease Lease7,8
+data Lease = LeaseLease7,8
+  { serialNumber serialNumber8,9
+data ChunkServerState ChunkServerState10,11
+data ChunkServerState = ChunkServerStateChunkServerState10,11
+  { chunkServerLeases chunkServerLeases11,12
+  , chunks chunks12,13
+data Handle Handle15,16
+data Handle = HandleHandle15,16
+
+./src/GFS/Master/Impl/Scratch.hs,354
+module GFS.Master.Impl.Scratch GFS.Master.Impl.Scratch0,1
+createTransport createTransport18,19
+createTransport createTransport19,20
+main main25,26
+main main26,27
+testMaster testMaster28,29
+testMaster testMaster29,30
+defaultHost defaultHost51,52
+defaultHost defaultHost52,53
+defaultPort defaultPort54,55
+defaultPort defaultPort55,56
+
+./src/GFS/Master/Impl/Server.hs,481
+module GFS.Master.Impl.Server GFS.Master.Impl.Server5,6
+data State State23,24
+data State = StateState23,24
+  { count count24,25
+data Config Config29,30
+data Config = Config Config29,30
+type MasterProcess MasterProcess33,34
+type MasterMonad MasterMonad35,36
+type MasterMonad m m35,36
+runMaster runMaster37,38
+runMaster runMaster38,39
+master master40,41
+master master41,42
+start start46,47
+start start47,48
+process process49,50
+process process50,51
+
+./src/GFS/Master/Impl/Types.hs,206
+module GFS.Master.Impl.Types GFS.Master.Impl.Types1,2
+data RequestRequest10,11
+  = GetChunkHandles GetChunkHandles11,12
+data ResponseResponse16,17
+  = GetChunkHandlesResp GetChunkHandlesResp17,18
+
+./src/GFS/Master/Impl/Client.hs,348
+module GFS.Master.Impl.Client GFS.Master.Impl.Client1,2
+data Config Config10,11
+data Config = ConfigConfig10,11
+  { masterAddress masterAddress11,12
+  , timeout timeout12,13
+data Handle Handle15,16
+data Handle m addr = HandleHandle15,16
+  { getChunkHandles getChunkHandles16,17
+newHandle newHandle20,21
+newHandle newHandle21,22
+
+./src/GFS/Scratch.hs,1017
+module GFS.Scratch GFS.Scratch3,4
+data Message Message20,21
+data Message = Ping Ping20,21
+             | Pong Pong21,22
+data TestMessage TestMessage27,28
+data TestMessage = Hello Hello27,28
+data Request Request31,32
+data Request a = Request Request31,32
+data Response Response37,38
+data Response a = Response Response37,38
+instance instance39,40
+rpc rpc47,48
+rpc rpc48,49
+noop noop54,55
+noop noop55,56
+rpcServer rpcServer57,58
+rpcServer rpcServer58,59
+pingServer pingServer64,65
+pingServer pingServer65,66
+data ArithMessageArithMessage72,73
+  = Add Add73,74
+  | Mul Mul74,75
+data ArithResponseArithResponse79,80
+  = ArithResponse ArithResponse80,81
+arithServer arithServer84,85
+arithServer arithServer85,86
+client client102,103
+client client103,104
+master master121,122
+master master122,123
+run run138,139
+run run139,140
+defaultHost defaultHost148,149
+defaultHost defaultHost149,150
+defaultPort defaultPort151,152
+defaultPort defaultPort152,153
+
+./src/GFS/Types.hs,123
+module GFS.Types GFS.Types5,6
+type Addr Addr9,10
+type ChunkIndex ChunkIndex11,12
+type ChunkHandle ChunkHandle13,14
+
+./src/GFS/Client.hs,947
+module GFS.Client GFS.Client5,6
+data Handle Handle15,16
+data Handle = HandleHandle15,16
+  { config config16,17
+withHandle withHandle19,20
+withHandle withHandle24,25
+data Config Config26,27
+data Config = ConfigConfig26,27
+  { chunkSize chunkSize27,28
+  , masterAddr masterAddr28,29
+type ClientMonad ClientMonad31,32
+type ClientMonad m m31,32
+computeChunkIndices computeChunkIndices33,34
+computeChunkIndices computeChunkIndices34,35
+getChunkHandle getChunkHandle39,40
+getChunkHandle getChunkHandle40,41
+fetchChunk fetchChunk42,43
+fetchChunk fetchChunk43,44
+selectReplica selectReplica46,47
+selectReplica selectReplica47,48
+read read49,50
+read read50,51
+create create59,60
+create create60,61
+delete delete62,63
+delete delete63,64
+close close65,66
+close close66,67
+write write68,69
+write write69,70
+snapshot snapshot71,72
+snapshot snapshot72,73
+append append74,75
+append append75,76
+
+./src/GFS/Master.hs,1430
+module GFS.Master GFS.Master10,11
+data Config Config37,38
+data Config = ConfigConfig37,38
+  { masterAddress masterAddress38,39
+  , timeout timeout39,40
+data Handle Handle42,43
+data Handle m addr = HandleHandle42,43
+  { getChunkHandles getChunkHandles43,44
+data Operation Operation47,48
+data Operation = Read Read47,48
+data Operation = Read | WriteWrite47,48
+data MasterException MasterException59,60
+data MasterException = Timeout Timeout59,60
+newHandle newHandle63,64
+newHandle newHandle64,65
+rpc rpc76,77
+rpc rpc77,78
+data RequestRequest89,90
+  = GetChunkHandles GetChunkHandles90,91
+data ResponseResponse95,96
+  = GetChunkHandlesResp GetChunkHandlesResp96,97
+data Options Options101,102
+data Options = Options Options101,102
+data MasterState MasterState113,114
+data MasterState = MasterStateMasterState113,114
+    count count115,116
+type MasterProcess MasterProcess129,130
+type MasterMonad MasterMonad131,132
+type MasterMonad m m131,132
+runMaster runMaster133,134
+runMaster runMaster134,135
+master master136,137
+master master137,138
+serve serve143,144
+serve serve144,145
+start start153,154
+start start154,155
+process process156,157
+process process157,158
+testMaster testMaster175,176
+testMaster testMaster176,177
+defaultHost defaultHost198,199
+defaultHost defaultHost199,200
+defaultPort defaultPort201,202
+defaultPort defaultPort202,203
+
+./src/MapReduce/Types.hs,944
+module MapReduce.Types MapReduce.Types0,1
+data WorkerStatusWorkerStatus2,3
+  = IdleIdle3,4
+  | BusyBusy4,5
+newtype Address Address6,7
+newtype Address = Address Address6,7
+data Worker Worker8,9
+data Worker = WorkerWorker8,9
+  { workerAddr workerAddr9,10
+  , workerStatus workerStatus10,11
+mkWorker mkWorker13,14
+mkWorker mkWorker14,15
+data TaskType TaskType19,20
+data TaskType = Map Map19,20
+data TaskType = Map | ReduceReduce19,20
+data TaskStatusTaskStatus21,22
+  = ToBeDoneToBeDone22,23
+  | InProgressInProgress23,24
+  | FailedFailed24,25
+  | CompletedCompleted25,26
+data Task Task28,29
+data Task = TaskTask28,29
+  { taskID taskID29,30
+  , taskStatus taskStatus30,31
+data MapReduce MapReduce33,34
+data MapReduce = MapReduceMapReduce33,34
+  { tasks tasks34,35
+  , workers workers35,36
+  , nrReduceTasks nrReduceTasks36,37
+  , nrMapTasks nrMapTasks37,38
+  , inputFile inputFile38,39
+
+./src/Utils/Distributed.hs,197
+module Utils.Distributed Utils.Distributed2,3
+serve serve13,14
+serve serve14,15
+data RPCException RPCException23,24
+data RPCException = Timeout Timeout23,24
+rpc rpc29,30
+rpc rpc31,32
+
+./src/Lib.hs,65
+module LibLib0,1
+someFunc someFunc4,5
+someFunc someFunc5,6
+
+./Setup.hs,15
+main main1,2
+
+./test/Spec.hs,30
+main main0,1
+main main1,2
