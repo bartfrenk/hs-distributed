@@ -16,15 +16,23 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     GFS.Scratch
+                       Scenario.Scratch
   build-depends:       base >= 4.7 && < 5
                      , basic-prelude
                      , binary
                      , bytestring
+                     , conduit
+                     , containers
                      , distributed-process
                      , distributed-process-lifted
                      , distributed-process-monad-control
                      , distributed-process-simplelocalnet
                      , distributed-static
+                     , free
+                     , HDBC
+                     , HDBC-postgresql
+                     , lens
+                     , monad-control
                      , mtl
                      , network
                      , network-transport-tcp
