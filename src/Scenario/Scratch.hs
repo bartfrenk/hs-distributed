@@ -107,7 +107,10 @@ program1 = do
   command A "begin transaction isolation level read committed"
   command B "begin transaction isolation level read committed"
   command A "update person set name = 'A'"
-  command B "update person set name = 'B'"
+  command B "update person set name = 'B'" -- blocks to avoid a dirty write, but
+                                           -- continues after A's commit; find
+                                           -- some way to make this happen
+                                           -- (async, Process?)
   command A "commit"
   command B "commit"
 
@@ -116,12 +119,28 @@ program2 = do
   command C "truncate table person"
   command C "insert into person values ('C')"
   command A "begin transaction isolation level read committed"
-  command B "begin transaction isolation level repeatable read"
+  command B "begin transaction \
+            \isolation level repeatable read"
   command A "update person set name = 'A'"
   command B "select * from person"
   command A "commit"
   command B "update person set name = 'B'"
   command B "commit"
+
+program4 :: Program Client SQL ()
+program4 = do
+  command C "truncate table person"
+  command C "insert into person values ('C')"
+  command A "begin transaction isolation level read committed"
+  command B "begin transaction \
+            \isolation level repeatable read"
+  command A "update person set name = 'A'"
+  command B "select * from person"
+  command B "update person set name = 'B'"
+  command A "commit"
+  command B "commit"
+
+
 
 program3 :: Program Client SQL ()
 program3 = do
