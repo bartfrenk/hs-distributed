@@ -1,10 +1,11 @@
 {-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoImplicitPrelude     #-}
+{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE OverloadedStrings #-}
 module Scenario.Process where
 
 import           BasicPrelude                             hiding (bracket, try)
@@ -17,8 +18,10 @@ import           Control.Lens                             hiding (from, to)
 import           Control.Monad.Catch
 import           Control.Monad.Reader
 import           Control.Monad.State                      hiding (state)
+import           Data.Binary
 import qualified Data.Map.Strict                          as Map
 import           Database.HDBC.PostgreSQL
+import           GHC.Generics                             hiding (from, to)
 
 import           Network.Socket                           (HostName,
                                                            ServiceName)
@@ -56,12 +59,21 @@ type MonadClient m =
   , MonadReader Settings m
   , MonadProcessBase m)
 
+data Result
+  = Success Int
+  | Failure String
+  deriving (Generic, Typeable, Show)
+
+instance Binary Result
+
 startClient :: (MonadClient m, Show clientTy) => clientTy -> m ()
-startClient client = do
+startClient _ = do
   conn <- liftIO . connectPostgreSQL' =<< view connStr
   serve $ \cmd -> do
-    liftIO $ runSQL conn cmd
-    return (0 :: Int)
+    res <- liftIO $ try (runSQL conn cmd)
+    case res of
+      Left exc -> return $ Failure (show (exc :: SomeException))
+      Right _  -> return $ Success (0 :: Int)
 
 -- TODO: do not throw on timeout
 interpretF :: (MonadMaster clientTy m, Ord clientTy, Serializable cmdTy,
@@ -71,7 +83,8 @@ interpretF (Wait ms next) =
   liftIO $ threadDelay (ms * 1000) >> return next
 interpretF (Command client cmd next) = do
   to <- getClientProcessId client
-  execCommand to cmd >>= say . show
+  report <- execCommand to cmd
+  say $ show report
   return next
 
 sayF :: (MonadMaster clientTy m, Show cmdTy, Show clientTy)
@@ -88,7 +101,7 @@ interpret :: (MonadMaster clientTy m,
 interpret = foldFree $ \term -> sayF term >> interpretF term
 
 data ExecResult
-  = Report Int
+  = Report Result
   | Pending Tag
   deriving (Show)
 
@@ -99,7 +112,7 @@ execCommand pid cmd = do
   response <- try $ rpc t pid cmd
   case response of
     Left (Timeout tag) -> return $ Pending tag
-    Right dt           -> return $ Report dt
+    Right res          -> return $ Report res
 
 getClientProcessId :: (MonadMaster clientTy m, Ord clientTy, Show clientTy)
                    => clientTy -> m ProcessId
@@ -144,7 +157,7 @@ defaultSettings = Settings
 programA :: Program Int SQL ()
 programA = do
   command 1 "begin transaction isolation level read committed"
-  command 2 "begin transaction isolation level read committed"
+  command 2 "begin transaction isolation level repeatable read"
   command 1 "update person set name = 'A'"
   command 2 "update person set name = 'B'" -- blocks to avoid a dirty write, but
                                            -- continues after A's commit; find
