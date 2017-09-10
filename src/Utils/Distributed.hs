@@ -4,7 +4,11 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TemplateHaskell       #-}
 
-module Utils.Distributed where
+module Utils.Distributed
+  ( rpc
+  , serve
+  , Tag
+  , RPCException(..) ) where
 
 import           Control.Distributed.Process.Lifted       hiding (try)
 import           Control.Distributed.Process.Lifted.Class
@@ -23,9 +27,10 @@ serve :: (Serializable a, Serializable b, MonadProcessBase m) => (a -> m b) -> m
 serve f =
   controlP $ \runInBase -> receiveWait
     [ match $ \case
-        (tag, from, request) -> runInBase $ do
+        TaggedMessage from tag request -> runInBase $ do
           resp <- f request
-          send from (tag :: UUID, resp)
+          self <- getSelfPid
+          send from (TaggedMessage self tag resp)
           serve f
     ]
 
@@ -51,7 +56,7 @@ type RemotePeer = ProcessId
 
 -- |Sends a message to a process and waits for the response. Request is mapped
 -- to a response by means of a unique message tag.
-rpc :: (Serializable a, Serializable b, MonadProcess m, MonadThrow m)
+rpc :: (Show b, Serializable a, Serializable b, MonadProcess m, MonadThrow m)
     => Int -> RemotePeer -> a -> m b
 rpc timeout to request = do
   requestTag <- sendTagged to request
@@ -70,7 +75,7 @@ sendTagged :: (Serializable a, MonadProcess m)
 sendTagged to msg = do
   from <- getSelfPid
   unique <- randomTag
-  send to (from, unique, msg)
+  send to (TaggedMessage from unique msg)
   return unique
 
 matchFirstTag :: Serializable a

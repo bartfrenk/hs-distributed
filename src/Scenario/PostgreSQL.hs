@@ -1,5 +1,6 @@
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoImplicitPrelude     #-}
@@ -7,34 +8,20 @@
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TemplateHaskell       #-}
 
-module Scenario.Scratch where
+module Scenario.PostgreSQL where
 
 import           BasicPrelude
 import           Control.Concurrent
 import           Control.Lens
-import           Control.Monad.Free
 import           Control.Monad.State
+import           Data.Binary
 import qualified Data.Map.Strict          as Map
 import           Database.HDBC
 import           Database.HDBC.PostgreSQL
+import           GHC.Generics
 
--- Language
+import           Scenario.Terms
 
-data Term clientTy cmdTy next
-  = Command clientTy cmdTy next
-  | Wait Int next
-
-deriving instance Functor (Term clientTy cmdTy)
-
-type Program clientTy cmdTy = Free (Term clientTy cmdTy)
-
-command :: clientTy -> cmdTy -> Program clientTy cmdTy ()
-command client cmd = liftF (Command client cmd ())
-
-wait :: Int -> Program clientTy cmdTy ()
-wait ms = liftF (Wait ms ())
-
--- Interpreter
 
 data Environment clientTy connTy = Environment
   { _sessions         :: Map clientTy connTy
@@ -49,7 +36,9 @@ mkEnvironment connString = Environment
   , _connectionString = connString
   }
 
-newtype SQL = SQL String
+newtype SQL = SQL String deriving (Typeable, Generic)
+
+instance Binary SQL
 
 instance IsString SQL where
   fromString = SQL
