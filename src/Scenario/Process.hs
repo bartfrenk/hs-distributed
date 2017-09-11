@@ -20,7 +20,7 @@ import           Control.Distributed.Process.Serializable
 import           Control.Lens                             hiding (from, to)
 import           Control.Monad.Catch
 import           Control.Monad.Reader
-import           Control.Monad.State                      hiding (state)
+import           Control.Monad.State                      hiding (state, State)
 import           Data.Binary
 import qualified Data.Map.Strict                          as Map
 import           Database.HDBC.PostgreSQL
@@ -46,27 +46,28 @@ data Settings = Settings
 makeLenses ''Settings
 
 
+type ClientIndex = Int
 
-data MasterState clientTy = MasterState
-  { _clients    :: Map clientTy ProcessId
+data State = State
+  { _clients    :: Map ClientIndex ProcessId
   , _messageTag :: Int
   , _pending    :: [Int]
   }
 
-makeLenses ''MasterState
+makeLenses ''State
 
-mkInitialState :: MasterState clientTy
-mkInitialState = MasterState Map.empty 1 []
+mkInitialState :: State
+mkInitialState = State Map.empty 1 []
 
-instance MonadState (MasterState clientTy) m => MonadTag m Int where
+instance MonadState State m => MonadTag m Int where
   nextTag = do
     tag <- use messageTag
     messageTag += 1
     return tag
 
-type MonadMaster clientTy m =
+type MonadMaster m =
   ( MonadProcess m
-  , MonadState (MasterState clientTy) m
+  , MonadState State m
   , MonadReader Settings m
   , MonadProcessBase m
   , MonadCatch m)
@@ -94,8 +95,8 @@ startClient = do
             Left exc -> return $ Failure (show (exc :: SomeException))
             Right _  -> return $ Success (0 :: Int)
 
-interpretF :: (MonadMaster clientTy m, Ord clientTy, Serializable cmdTy)
-           => Term clientTy cmdTy a -> m a
+interpretF :: (MonadMaster m, Serializable cmdTy)
+           => Term ClientIndex cmdTy a -> m a
 interpretF (Wait ms next) =
   liftIO $ threadDelay (ms * 1000) >> return next
 interpretF (Command client cmd next) = do
@@ -106,28 +107,25 @@ interpretF (Command client cmd next) = do
   say $ show (reports :: [(Int, Result)])
   return next
 
-sendCommand :: (MonadMaster clientTy m, Ord clientTy, Serializable cmdTy)
-            => clientTy -> cmdTy -> m ()
+sendCommand :: (MonadMaster m, Serializable cmdTy)
+            => ClientIndex -> cmdTy -> m ()
 sendCommand client cmd = do
   to <- getClientProcessId client
   tag <- sendTagged to cmd
   pending %= (tag:)
 
-logF :: (MonadMaster clientTy m, Show cmdTy, Show clientTy)
+logF :: (MonadMaster m, Show cmdTy, Show clientTy)
      => Term clientTy cmdTy a -> m ()
 logF (Wait ms _) =
   say $ "waiting for " ++ show ms ++ " ms"
 logF (Command client cmd _) =
   say $ show client ++ ": " ++ show cmd
 
-interpret :: (MonadMaster clientTy m,
-              Show cmdTy, Show clientTy,
-              Ord clientTy, Serializable cmdTy)
-          => Program clientTy cmdTy a -> m a
+interpret :: (MonadMaster m, Show cmdTy, Serializable cmdTy)
+          => Program ClientIndex cmdTy a -> m a
 interpret = foldFree $ \term -> logF term >> interpretF term
 
-getClientProcessId :: (MonadMaster clientTy m, Ord clientTy)
-                   => clientTy -> m ProcessId
+getClientProcessId :: MonadMaster m => ClientIndex -> m ProcessId
 getClientProcessId client = do
   pid' <- Map.lookup client <$> use clients
   case pid' of
@@ -137,11 +135,11 @@ getClientProcessId client = do
       clients %= Map.insert client pid
       return pid
 
-runMaster :: ReaderT Settings (StateT (MasterState Int) Process) a
-          -> Settings -> MasterState Int -> Process a
+runMaster :: ReaderT Settings (StateT State Process) a
+          -> Settings -> State -> Process a
 runMaster act settings = evalStateT (runReaderT act settings)
 
-start :: (Program Int SQL (), Settings, MasterState Int) -> Process ()
+start :: (Program Int SQL (), Settings, State) -> Process ()
 start (program, settings, state) = runMaster (interpret program) settings state
 
 createTransport :: (MonadIO m, MonadThrow m) => HostName -> ServiceName -> m Transport
