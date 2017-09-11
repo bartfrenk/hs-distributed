@@ -21,6 +21,7 @@ library
                      , basic-prelude
                      , binary
                      , bytestring
+                     , clock
                      , conduit
                      , containers
                      , distributed-process
@@ -38,6 +39,8 @@ library
                      , network-transport-tcp
                      , network-transport
                      , exceptions
+                     , timeit
+                     , microtimer
                      , uuid
   ghc-options:         -Wno-name-shadowing
   default-language:    Haskell2010

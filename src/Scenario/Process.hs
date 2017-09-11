@@ -35,8 +35,8 @@ import           Scenario.Utils
 
 
 data Result
-  = Success Int
-  | Failure String
+  = Success Double
+  | Failure Double String
   deriving (Generic, Typeable, Show)
 
 

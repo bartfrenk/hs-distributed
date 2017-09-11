@@ -44,6 +44,7 @@ extra-deps:
   - distributed-process-lifted-0.2.0.1
   - distributed-process-monad-control-0.5.1.2
   - HDBC-postgresql-2.3.2.5
+  - microtimer-0.0.1.2
 
 # Override default flag values for local packages and extra-deps
 flags: {}
