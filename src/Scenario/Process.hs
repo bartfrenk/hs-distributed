@@ -46,18 +46,18 @@ data Settings = Settings
 makeLenses ''Settings
 
 
-type ClientIndex = Int
+type AgentIndex = Int
 
 data State = State
-  { _clients    :: Map ClientIndex ProcessId
+  { _agents    :: Map AgentIndex ProcessId
   , _messageTag :: Int
   , _pending    :: [Int]
   }
 
 makeLenses ''State
 
-mkInitialState :: State
-mkInitialState = State Map.empty 1 []
+initialState :: State
+initialState = State Map.empty 1 []
 
 instance MonadState State m => MonadTag m Int where
   nextTag = do
@@ -72,7 +72,7 @@ type MonadMaster m =
   , MonadProcessBase m
   , MonadCatch m)
 
-type MonadClient m =
+type MonadAgent m =
   ( MonadProcess m
   , MonadReader Settings m
   , MonadProcessBase m)
@@ -84,56 +84,58 @@ data Result
 
 instance Binary Result
 
-startClient :: MonadClient m => m ()
-startClient = do
+startAgent :: MonadAgent m => m ()
+startAgent = do
   conn <- liftIO . connectPostgreSQL' =<< view connStr
   serve $ handler conn
-  where handler :: MonadClient m => Connection -> Int -> SQL -> m Result
+  where handler :: MonadAgent m => Connection -> Int -> SQL -> m Result
         handler conn _ cmd = do
           res <- liftIO $ try (runSQL conn cmd)
           case res of
             Left exc -> return $ Failure (show (exc :: SomeException))
             Right _  -> return $ Success (0 :: Int)
 
-interpretF :: (MonadMaster m, Serializable cmdTy)
-           => Term ClientIndex cmdTy a -> m a
+interpretF :: (MonadMaster m, Serializable c)
+           => Term AgentIndex c a -> m a
 interpretF (Wait ms next) =
   liftIO $ threadDelay (ms * 1000) >> return next
-interpretF (Command client cmd next) = do
-  sendCommand client cmd
+interpretF (Command agent cmd next) = do
+  sendCommand agent cmd
   tags <- use pending
   dt <- view timeout
   reports <- receiveTagged dt tags
   say $ show (reports :: [(Int, Result)])
   return next
 
-sendCommand :: (MonadMaster m, Serializable cmdTy)
-            => ClientIndex -> cmdTy -> m ()
-sendCommand client cmd = do
-  to <- getClientProcessId client
+sendCommand :: (MonadMaster m, Serializable c)
+            => AgentIndex -> c -> m ()
+sendCommand agent cmd = do
+  to <- getAgentProcessId agent
   tag <- sendTagged to cmd
   pending %= (tag:)
 
-logF :: (MonadMaster m, Show cmdTy, Show clientTy)
-     => Term clientTy cmdTy a -> m ()
-logF (Wait ms _) =
-  say $ "waiting for " ++ show ms ++ " ms"
-logF (Command client cmd _) =
-  say $ show client ++ ": " ++ show cmd
-
-interpret :: (MonadMaster m, Show cmdTy, Serializable cmdTy)
-          => Program ClientIndex cmdTy a -> m a
-interpret = foldFree $ \term -> logF term >> interpretF term
-
-getClientProcessId :: MonadMaster m => ClientIndex -> m ProcessId
-getClientProcessId client = do
-  pid' <- Map.lookup client <$> use clients
+getAgentProcessId :: MonadMaster m => AgentIndex -> m ProcessId
+getAgentProcessId agent = do
+  pid' <- Map.lookup agent <$> use agents
   case pid' of
     Just pid -> return pid
     Nothing -> do
-      pid <- spawnLocal startClient
-      clients %= Map.insert client pid
+      pid <- spawnLocal startAgent
+      agents %= Map.insert agent pid
       return pid
+
+logF :: (MonadMaster m, Show c)
+     => Term AgentIndex c a -> m ()
+logF (Wait ms _) =
+  say $ "waiting for " ++ show ms ++ " ms"
+logF (Command agent cmd _) =
+  say $ show agent ++ ": " ++ show cmd
+
+interpret :: (MonadMaster m, Show c, Serializable c)
+          => Program AgentIndex c a -> m a
+interpret = foldFree $ \term -> logF term >> interpretF term
+
+
 
 runMaster :: ReaderT Settings (StateT State Process) a
           -> Settings -> State -> Process a
@@ -153,7 +155,7 @@ exec :: Program Int SQL () -> IO ()
 exec program =
   bracket (createTransport "localhost" "4444") closeTransport $ \transport -> do
     node <- newLocalNode transport initRemoteTable
-    runProcess node $ start (program, defaultSettings, mkInitialState)
+    runProcess node $ start (program, defaultSettings, initialState)
 
 defaultSettings :: Settings
 defaultSettings = Settings
