@@ -47,12 +47,9 @@ programA = do
   command 1 "begin transaction isolation level read committed"
   command 2 "begin transaction isolation level repeatable read"
   command 1 "update person set name = 'A'"
-  command 2 "update person set name = 'B'" -- blocks to avoid a dirty write, but
-                                           -- continues after A's commit; find
-                                           -- some way to make this happen
-                                           -- (async, Process?)
+  command 2 "update person set name = 'B'"
   command 1 "commit"
   command 2 "commit"
 
-test :: IO ()
+test :: IO [(Int, Result)]
 test = exec (startAgentSQL docker) programA

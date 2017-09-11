@@ -11,7 +11,7 @@
 {-# LANGUAGE UndecidableInstances  #-}
 module Scenario.Process where
 
-import           BasicPrelude                             hiding (bracket, try)
+import           BasicPrelude                             hiding (bracket, try, log)
 import           Control.Concurrent
 import           Control.Distributed.Process.Lifted       hiding (bracket, try)
 import           Control.Distributed.Process.Lifted.Class
@@ -23,6 +23,7 @@ import           Control.Monad.Reader
 import           Control.Monad.RWS
 import           Control.Monad.State                      hiding (State, state)
 import           Data.Binary
+import           Data.IORef
 import qualified Data.Map.Strict                          as Map
 import           GHC.Generics                             hiding (from, to)
 import           Network.Transport                        (closeTransport)
@@ -33,18 +34,28 @@ import           Scenario.Terms
 import           Scenario.Utils
 
 
+data Result
+  = Success Int
+  | Failure String
+  deriving (Generic, Typeable, Show)
+
+
 data Settings = Settings
   { _agentProcess :: Process ()
   , _timeout      :: Int
+  , _log          :: IORef [(Int, Result)]
   }
 
 makeLenses ''Settings
 
-mkSettings :: Process () -> Settings
-mkSettings agentProcess = Settings
-  { _timeout = 500000
-  , _agentProcess = agentProcess
-  }
+mkSettings :: Process () -> IO Settings
+mkSettings agentProcess = do
+  empty <- newIORef []
+  return Settings
+    { _timeout = 500000
+    , _agentProcess = agentProcess
+    , _log = empty
+    }
 
 
 
@@ -73,11 +84,6 @@ type MonadMaster m =
   , MonadReader Settings m
   , MonadProcessBase m)
 
-data Result
-  = Success Int
-  | Failure String
-  deriving (Generic, Typeable, Show)
-
 instance Binary Result
 
 interpretF :: (MonadMaster m, Serializable c)
@@ -89,7 +95,8 @@ interpretF (Command agent cmd next) = do
   tags <- use pending
   dt <- view timeout
   reports <- receiveTagged dt tags
-  say $ show (reports :: [(Int, Result)])
+  current <- view log
+  liftIO $ modifyIORef current (++ reports)
   return next
 
 sendCommand :: (MonadMaster m, Serializable c)
@@ -122,11 +129,13 @@ interpret :: (MonadMaster m, Show c, Serializable c)
 interpret = foldFree $ \term -> logF term >> interpretF term
 
 
-exec :: (Serializable c, Show c) => Process () -> Program Int c () -> IO ()
+exec :: (Serializable c, Show c) => Process () -> Program Int c () -> IO [(Int, Result)]
 exec agentProcess program =
   bracket (createTransport "localhost" "4444") closeTransport $ \transport -> do
     node <- newLocalNode transport initRemoteTable
-    runProcess node $ start program (mkSettings agentProcess) initialState
+    settings <- liftIO $ mkSettings agentProcess
+    runProcess node $ start program settings initialState
+    readIORef $ settings ^. log
 
   where start program = runMaster (interpret program)
 
