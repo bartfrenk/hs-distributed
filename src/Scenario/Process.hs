@@ -71,8 +71,7 @@ type MonadMaster m =
   ( MonadProcess m
   , MonadState State m
   , MonadReader Settings m
-  , MonadProcessBase m
-  , MonadCatch m)
+  , MonadProcessBase m)
 
 data Result
   = Success Int
