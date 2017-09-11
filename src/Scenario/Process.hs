@@ -20,36 +20,38 @@ import           Control.Distributed.Process.Serializable
 import           Control.Lens                             hiding (from, to)
 import           Control.Monad.Catch
 import           Control.Monad.Reader
-import           Control.Monad.State                      hiding (state, State)
+import           Control.Monad.RWS
+import           Control.Monad.State                      hiding (State, state)
 import           Data.Binary
 import qualified Data.Map.Strict                          as Map
-import           Database.HDBC.PostgreSQL
 import           GHC.Generics                             hiding (from, to)
-
-import           Network.Socket                           (HostName,
-                                                           ServiceName)
-import           Network.Transport                        (Transport,
-                                                           closeTransport)
+import           Network.Transport                        (closeTransport)
 import qualified Network.Transport.TCP                    as TCP
 
-import           Scenario.PostgreSQL                      (SQL, runSQL)
 import           Scenario.Terms
 
 import           Scenario.Utils
 
 
 data Settings = Settings
-  { _connStr :: String
-  , _timeout :: Int
+  { _agentProcess :: Process ()
+  , _timeout      :: Int
   }
 
 makeLenses ''Settings
+
+mkSettings :: Process () -> Settings
+mkSettings agentProcess = Settings
+  { _timeout = 500000
+  , _agentProcess = agentProcess
+  }
+
 
 
 type AgentIndex = Int
 
 data State = State
-  { _agents    :: Map AgentIndex ProcessId
+  { _agents     :: Map AgentIndex ProcessId
   , _messageTag :: Int
   , _pending    :: [Int]
   }
@@ -72,28 +74,12 @@ type MonadMaster m =
   , MonadProcessBase m
   , MonadCatch m)
 
-type MonadAgent m =
-  ( MonadProcess m
-  , MonadReader Settings m
-  , MonadProcessBase m)
-
 data Result
   = Success Int
   | Failure String
   deriving (Generic, Typeable, Show)
 
 instance Binary Result
-
-startAgent :: MonadAgent m => m ()
-startAgent = do
-  conn <- liftIO . connectPostgreSQL' =<< view connStr
-  serve $ handler conn
-  where handler :: MonadAgent m => Connection -> Int -> SQL -> m Result
-        handler conn _ cmd = do
-          res <- liftIO $ try (runSQL conn cmd)
-          case res of
-            Left exc -> return $ Failure (show (exc :: SomeException))
-            Right _  -> return $ Success (0 :: Int)
 
 interpretF :: (MonadMaster m, Serializable c)
            => Term AgentIndex c a -> m a
@@ -120,7 +106,8 @@ getAgentProcessId agent = do
   case pid' of
     Just pid -> return pid
     Nothing -> do
-      pid <- spawnLocal startAgent
+      process <- view agentProcess
+      pid <- spawnLocal (liftP process)
       agents %= Map.insert agent pid
       return pid
 
@@ -136,43 +123,19 @@ interpret :: (MonadMaster m, Show c, Serializable c)
 interpret = foldFree $ \term -> logF term >> interpretF term
 
 
-
-runMaster :: ReaderT Settings (StateT State Process) a
-          -> Settings -> State -> Process a
-runMaster act settings = evalStateT (runReaderT act settings)
-
-start :: (Program Int SQL (), Settings, State) -> Process ()
-start (program, settings, state) = runMaster (interpret program) settings state
-
-createTransport :: (MonadIO m, MonadThrow m) => HostName -> ServiceName -> m Transport
-createTransport host service = do
-  result <- liftIO $ TCP.createTransport host service TCP.defaultTCPParameters
-  case result of
-    Left err        -> throwM err
-    Right transport -> return transport
-
-exec :: Program Int SQL () -> IO ()
-exec program =
+exec :: (Serializable c, Show c) => Process () -> Program Int c () -> IO ()
+exec agentProcess program =
   bracket (createTransport "localhost" "4444") closeTransport $ \transport -> do
     node <- newLocalNode transport initRemoteTable
-    runProcess node $ start (program, defaultSettings, initialState)
+    runProcess node $ start program (mkSettings agentProcess) initialState
 
-defaultSettings :: Settings
-defaultSettings = Settings
-  { _connStr = "postgresql://docker:docker@localhost:15432/docker"
-  , _timeout = 500000
-  }
+  where start program = runMaster (interpret program)
 
+        createTransport host service = do
+          result <- liftIO $ TCP.createTransport host service TCP.defaultTCPParameters
+          case result of
+            Left err        -> throwM err
+            Right transport -> return transport
 
-programA :: Program Int SQL ()
-programA = do
-  command 1 "begin transaction isolation level read committed"
-  command 2 "begin transaction isolation level repeatable read"
-  command 1 "update person set name = 'A'"
-  command 2 "update person set name = 'B'" -- blocks to avoid a dirty write, but
-                                           -- continues after A's commit; find
-                                           -- some way to make this happen
-                                           -- (async, Process?)
-  command 1 "commit"
-  command 2 "commit"
+        runMaster act settings = evalStateT (runReaderT act settings)
 
