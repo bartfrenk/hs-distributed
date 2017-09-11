@@ -1,11 +1,14 @@
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoImplicitPrelude     #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE UndecidableInstances  #-}
 module Scenario.Process where
 
 import           BasicPrelude                             hiding (bracket, try)
@@ -31,7 +34,8 @@ import qualified Network.Transport.TCP                    as TCP
 
 import           Scenario.PostgreSQL                      (SQL, runSQL)
 import           Scenario.Terms
-import           Utils.Distributed
+
+import           Scenario.Utils
 
 
 data Settings = Settings
@@ -41,11 +45,24 @@ data Settings = Settings
 
 makeLenses ''Settings
 
+
+
 data MasterState clientTy = MasterState
-  { _clients :: Map clientTy ProcessId
+  { _clients    :: Map clientTy ProcessId
+  , _messageTag :: Int
+  , _pending    :: [Int]
   }
 
 makeLenses ''MasterState
+
+mkInitialState :: MasterState clientTy
+mkInitialState = MasterState Map.empty 1 []
+
+instance MonadState (MasterState clientTy) m => MonadTag m Int where
+  nextTag = do
+    tag <- use messageTag
+    messageTag += 1
+    return tag
 
 type MonadMaster clientTy m =
   ( MonadProcess m
@@ -66,62 +83,57 @@ data Result
 
 instance Binary Result
 
-startClient :: (MonadClient m, Show clientTy) => clientTy -> m ()
-startClient _ = do
+startClient :: MonadClient m => m ()
+startClient = do
   conn <- liftIO . connectPostgreSQL' =<< view connStr
-  serve $ \cmd -> do
-    res <- liftIO $ try (runSQL conn cmd)
-    case res of
-      Left exc -> return $ Failure (show (exc :: SomeException))
-      Right _  -> return $ Success (0 :: Int)
+  serve $ handler conn
+  where handler :: MonadClient m => Connection -> Int -> SQL -> m Result
+        handler conn _ cmd = do
+          res <- liftIO $ try (runSQL conn cmd)
+          case res of
+            Left exc -> return $ Failure (show (exc :: SomeException))
+            Right _  -> return $ Success (0 :: Int)
 
--- TODO: do not throw on timeout
-interpretF :: (MonadMaster clientTy m, Ord clientTy, Serializable cmdTy,
-               Show clientTy)
+interpretF :: (MonadMaster clientTy m, Ord clientTy, Serializable cmdTy)
            => Term clientTy cmdTy a -> m a
 interpretF (Wait ms next) =
   liftIO $ threadDelay (ms * 1000) >> return next
 interpretF (Command client cmd next) = do
-  to <- getClientProcessId client
-  report <- execCommand to cmd
-  say $ show report
+  sendCommand client cmd
+  tags <- use pending
+  dt <- view timeout
+  reports <- receiveTagged dt tags
+  say $ show (reports :: [(Int, Result)])
   return next
 
-sayF :: (MonadMaster clientTy m, Show cmdTy, Show clientTy)
+sendCommand :: (MonadMaster clientTy m, Ord clientTy, Serializable cmdTy)
+            => clientTy -> cmdTy -> m ()
+sendCommand client cmd = do
+  to <- getClientProcessId client
+  tag <- sendTagged to cmd
+  pending %= (tag:)
+
+logF :: (MonadMaster clientTy m, Show cmdTy, Show clientTy)
      => Term clientTy cmdTy a -> m ()
-sayF (Wait ms _) =
+logF (Wait ms _) =
   say $ "waiting for " ++ show ms ++ " ms"
-sayF (Command client cmd _) =
+logF (Command client cmd _) =
   say $ show client ++ ": " ++ show cmd
 
 interpret :: (MonadMaster clientTy m,
               Show cmdTy, Show clientTy,
               Ord clientTy, Serializable cmdTy)
           => Program clientTy cmdTy a -> m a
-interpret = foldFree $ \term -> sayF term >> interpretF term
+interpret = foldFree $ \term -> logF term >> interpretF term
 
-data ExecResult
-  = Report Result
-  | Pending Tag
-  deriving (Show)
-
-execCommand :: (MonadMaster clientTy m, Serializable cmdTy, MonadCatch m)
-            => ProcessId -> cmdTy -> m ExecResult
-execCommand pid cmd = do
-  t <- view timeout
-  response <- try $ rpc t pid cmd
-  case response of
-    Left (Timeout tag) -> return $ Pending tag
-    Right res          -> return $ Report res
-
-getClientProcessId :: (MonadMaster clientTy m, Ord clientTy, Show clientTy)
+getClientProcessId :: (MonadMaster clientTy m, Ord clientTy)
                    => clientTy -> m ProcessId
 getClientProcessId client = do
   pid' <- Map.lookup client <$> use clients
   case pid' of
     Just pid -> return pid
     Nothing -> do
-      pid <- spawnLocal $ startClient client
+      pid <- spawnLocal startClient
       clients %= Map.insert client pid
       return pid
 
@@ -139,18 +151,16 @@ createTransport host service = do
     Left err        -> throwM err
     Right transport -> return transport
 
-
-
 exec :: Program Int SQL () -> IO ()
 exec program =
   bracket (createTransport "localhost" "4444") closeTransport $ \transport -> do
     node <- newLocalNode transport initRemoteTable
-    runProcess node $ start (program, defaultSettings, MasterState Map.empty)
+    runProcess node $ start (program, defaultSettings, mkInitialState)
 
 defaultSettings :: Settings
 defaultSettings = Settings
   { _connStr = "postgresql://docker:docker@localhost:15432/docker"
-  , _timeout = 1000000
+  , _timeout = 500000
   }
 
 
