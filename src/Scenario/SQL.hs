@@ -30,11 +30,20 @@ runSQL c (SQL sql) = runRaw c sql
 
 docker :: String
 docker = "postgresql://docker:docker@localhost:15432/docker"
+
 data Result
   = Success Time Time
-  | Failure Time Time String
+  | Failure Time Time DatabaseError
   deriving (Generic, Typeable, Show)
 
+newtype DatabaseError = DatabaseError SqlError
+  deriving (Eq, Show)
+
+instance Binary DatabaseError where
+  put (DatabaseError err) =
+    put (seState err, seNativeError err, seErrorMsg err)
+  get = DatabaseError . uncurry3 SqlError <$> get
+    where uncurry3 f (x, y, z) = f x y z
 
 instance Binary Result
 
@@ -46,7 +55,7 @@ agentSQL connStr = Agent
       (_, res) <- liftIO $ time $ try (runSQL conn cmd) -- force evaluation
       end <- getTime Monotonic
       case res of
-        Left exc -> return $ Failure start end (show (exc :: SomeException))
+        Left exc -> return $ Failure start end (DatabaseError exc)
         Right _  -> return $ Success start end
   }
 
@@ -56,7 +65,7 @@ programA = do
   command 2 "begin transaction isolation level repeatable read"
   command 1 "update person set name = 'A'"
   command 2 "update person set name = 'B'"
-  command 1 "abort"
+  command 1 "commit"
   command 2 "commit"
 
 test :: IO [(Int, Result)]
