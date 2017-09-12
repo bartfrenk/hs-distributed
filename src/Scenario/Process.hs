@@ -118,7 +118,7 @@ interpret = foldFree $ \term -> logF term >> interpretF term
 
 data Agent r c out = Agent
   { resource :: IO r
-  , handler :: r -> Int -> c -> Process out
+  , handler :: r -> AgentIndex -> c -> Process out
   }
 
 exec :: (Serializable out, Serializable c, Show c)

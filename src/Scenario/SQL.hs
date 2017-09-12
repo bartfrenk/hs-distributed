@@ -1,19 +1,19 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE OverloadedStrings          #-}
 module Scenario.SQL where
 
 import           BasicPrelude
-import           Control.Distributed.Process hiding (try)
 import           Data.Binary
 import           Database.HDBC
 import           Database.HDBC.PostgreSQL
-import           GHC.Generics                (Generic)
-import           Scenario.Process            (Agent (..), exec)
-import           Scenario.Terms
-import           Scenario.Utils
-import           System.Clock
+import           GHC.Generics             (Generic)
 import           System.Microtimer
+
+
+import           Scenario.Process         (Agent (..), exec)
+import           Scenario.Terms
+import           Scenario.Types
 
 newtype SQL = SQL String deriving (Typeable, Generic)
 
@@ -30,11 +30,11 @@ runSQL c (SQL sql) = runRaw c sql
 
 docker :: String
 docker = "postgresql://docker:docker@localhost:15432/docker"
-
 data Result
-  = Success Double
-  | Failure Double String
+  = Success Time Time
+  | Failure Time Time String
   deriving (Generic, Typeable, Show)
+
 
 instance Binary Result
 
@@ -42,14 +42,12 @@ agentSQL :: String -> Agent Connection SQL Result
 agentSQL connStr = Agent
   { resource = connectPostgreSQL' connStr
   , handler = \conn _ cmd -> do
-      start <- liftIO $ getTime Monotonic
-      say $ show start
-      (dt, res) <- liftIO $ time $ try (runSQL conn cmd)
-      stop <- liftIO $ getTime Monotonic
-      say $ show stop
+      start <- getTime Monotonic
+      (_, res) <- liftIO $ time $ try (runSQL conn cmd) -- force evaluation
+      end <- getTime Monotonic
       case res of
-        Left exc -> return $ Failure (dt * 1000) (show (exc :: SomeException))
-        Right _  -> return $ Success (dt * 1000)
+        Left exc -> return $ Failure start end (show (exc :: SomeException))
+        Right _  -> return $ Success start end
   }
 
 programA :: Program Int SQL ()
